@@ -26,25 +26,29 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Native fullscreen plugin (landscape + immersive)
+      - name: Native plugins
         run: |
+          set -e
           JAVA=android/app/src/main/java/com/wayanime/app
           mkdir -p $JAVA
-          cp native/ImmersivePlugin.java native/MainActivity.java native/NotifyPlugin.java native/EpisodeWorker.java $JAVA/
+          # انسخ أي ملف Java موجود (ما تفشلش إلا ما كانش)
+          for f in native/*.java; do
+            [ -f "$f" ] && cp "$f" $JAVA/
+          done
+          ls -la $JAVA/
 
-      - name: Notifications (WorkManager + permission + small icon)
+      - name: Notifications extras (optional)
         run: |
           set -e
           mkdir -p android/app/src/main/res/drawable
-          cp native/ic_*.xml android/app/src/main/res/drawable/
-          # WorkManager للفحص فـ الخلفية حتى والتطبيق مسدود
-          grep -q "androidx.work:work-runtime" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "androidx.work:work-runtime:2.9.1"' android/app/build.gradle
-          # صلاحية الإشعارات (Android 13+)
+          if ls native/ic_*.xml 1>/dev/null 2>&1; then cp native/ic_*.xml android/app/src/main/res/drawable/; fi
+          # WorkManager + jsoup إلا كانوا موجودين فـ native
+          if [ -f native/EpisodeWorker.java ]; then
+            grep -q "androidx.work:work-runtime" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "androidx.work:work-runtime:2.9.1"' android/app/build.gradle
+            grep -q "org.jsoup:jsoup" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "org.jsoup:jsoup:1.17.2"' android/app/build.gradle
+          fi
           M=android/app/src/main/AndroidManifest.xml
-          grep -q POST_NOTIFICATIONS $M || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' $M
-          grep -q "org.jsoup:jsoup" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "org.jsoup:jsoup:1.17.2"' android/app/build.gradle
-          grep -n "work-runtime\|jsoup" android/app/build.gradle
-          grep -n "POST_NOTIFICATIONS" $M
+          grep -q POST_NOTIFICATIONS $M || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' $M || true
 
       - name: App icon
         run: |
@@ -54,9 +58,11 @@ jobs:
           if command -v magick >/dev/null 2>&1; then IM=magick; else IM=convert; fi
           RES=android/app/src/main/res
           ICON=assets/app-icon.png
-          if [ ! -f "$ICON" ]; then echo "::warning::assets/app-icon.png غير موجود في المستودع، نستعمل assets/icon.png"; ICON=assets/icon.png; fi
-          ls -la assets | head -20
-          # الأيقونة صورة كاملة (مربعة): بلا trim، legacy بملء الصورة، round بقناع دائري، foreground للـ adaptive بحجم 66% فوق لون الخلفية
+          if [ ! -f "$ICON" ]; then ICON=www/assets/app-icon.png; fi
+          if [ ! -f "$ICON" ]; then ICON=assets/icon.png; fi
+          if [ ! -f "$ICON" ]; then ICON=www/assets/icon.png; fi
+          if [ ! -f "$ICON" ]; then echo "::warning::no icon found, skip"; exit 0; fi
+          ls -la "$ICON"
           for d in mdpi:48:108 hdpi:72:162 xhdpi:96:216 xxhdpi:144:324 xxxhdpi:192:432; do
             IFS=: read n s f <<< "$d"
             fw=$((f*66/100))
@@ -64,8 +70,7 @@ jobs:
             $IM $RES/mipmap-$n/ic_launcher.png \( -size ${s}x${s} xc:black -fill white -draw "circle $((s/2)),$((s/2)) $((s/2)),0" \) -alpha off -compose CopyOpacity -composite $RES/mipmap-$n/ic_launcher_round.png
             $IM "$ICON" -resize ${fw}x${fw} -background none -gravity center -extent ${f}x${f} $RES/mipmap-$n/ic_launcher_foreground.png
           done
-          # Capacitor كيجي بأيقونة adaptive ديالو (X زرقاء + grid) محددة فـ XML -> نبدلوها بديالنا
-          rm -f $RES/drawable-v24/ic_launcher_foreground.xml $RES/drawable/ic_launcher_background.xml $RES/drawable/ic_launcher_foreground.xml $RES/drawable-v24/ic_launcher_background.xml
+          rm -f $RES/drawable-v24/ic_launcher_foreground.xml $RES/drawable/ic_launcher_background.xml $RES/drawable/ic_launcher_foreground.xml $RES/drawable-v24/ic_launcher_background.xml 2>/dev/null || true
           mkdir -p $RES/mipmap-anydpi-v26 $RES/values
           cat > $RES/values/wa_icon_colors.xml <<'XML'
           <?xml version="1.0" encoding="utf-8"?>
