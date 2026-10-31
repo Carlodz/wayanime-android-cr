@@ -1,7 +1,6 @@
 node_modules/
-android/
-.idea/
-*.apk
-*.aab
-.DS_Store
 dist/
+android-app/www/
+android-app/android/
+android-app/node_modules/
+cert.pfx

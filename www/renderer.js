@@ -986,7 +986,7 @@ async function a3rButtons(epUrl) {
       if (r && r.url) { play({ url: r.url }); return true; }
       return false;
     };
-    return { t: `Anime3rb · ${x.tr ? x.tr + ' · ' : ''}${x.label} · ${x.size}`, f: async () => { toast('جارٍ تحضير الرابط…'); if (!(await run())) { toast('تعذّر التشغيل داخل المشغّل — فتحناها فـ المتصفح'); window.api.openExternal(epUrl); } }, try: run };
+    return { t: `Anime3rb · ${x.tr ? x.tr + ' · ' : ''}${x.label} · ${x.size}`, dsrc: async () => { const r = await window.api.a3r.direct(x.href).catch(() => null); return r && r.url ? { url: r.url, headers: r.headers, hls: /\.m3u8/i.test(r.url) } : null; }, f: async () => { toast('جارٍ تحضير الرابط…'); if (!(await run())) { toast('تعذّر التشغيل داخل المشغّل — فتحناها فـ المتصفح'); window.api.openExternal(epUrl); } }, try: run };
   });
 }
 
@@ -1012,7 +1012,7 @@ async function crossButtons({ names, ep, skip = [], have = new Set() }) {
       if (!hit) continue;
       const eps = await window.api.ar.episodes(hit.id), e = eps.find(x => (x.type || 'Episode') === 'Episode' && parseFloat(x.num) === parseFloat(ep));
       if (!e) return [];
-      return (await window.api.ar.streams(e.raw).catch(() => [])).map(x => ({ t: `Animeify · Mediafire · ${x.q}`, u: x.url, f: () => play({ url: x.url }), try: async () => { play({ url: x.url }); return true; } }));
+      return (await window.api.ar.streams(e.raw).catch(() => [])).map(x => ({ t: `Animeify · Mediafire · ${x.q}`, u: x.url, dsrc: async () => ({ url: x.url, hls: /\.m3u8/i.test(x.url) }), f: () => play({ url: x.url }), try: async () => { play({ url: x.url }); return true; } }));
     }
     return [];
   })(), 20000).catch(() => []));
@@ -1582,8 +1582,8 @@ async function openAr(id, wantEp, extra = {}) {
         witUrl().then(u => (u ? witQualities(u) : [])).catch(() => [])
       ]);
       if (!b.classList.contains('on')) return;
-      const btns = ar.map(x => ({ t: `Mediafire · ${x.q}`, f: () => play({ url: x.url }), try: async () => { play({ url: x.url }); return true; } }));
-      if (e.sd) (await window.api.dub.streams({ id: sdId, ep: e.sd, movie: sdMovie }).catch(() => [])).forEach(x => btns.push({ t: `@@mic@@ مدبلج · ${x.label}${x.res ? ' · ' + x.res : ''}${x.direct ? '' : ' · ' + hostOf(x.url)}`, f: () => (x.direct ? play({ url: x.url }) : playWitLink(x.url)) }));
+      const btns = ar.map(x => ({ t: `Mediafire · ${x.q}`, dsrc: async () => ({ url: x.url, hls: /\.m3u8/i.test(x.url) }), f: () => play({ url: x.url }), try: async () => { play({ url: x.url }); return true; } }));
+      if (e.sd) (await window.api.dub.streams({ id: sdId, ep: e.sd, movie: sdMovie }).catch(() => [])).forEach(x => btns.push({ t: `@@mic@@ مدبلج · ${x.label}${x.res ? ' · ' + x.res : ''}${x.direct ? '' : ' · ' + hostOf(x.url)}`, dsrc: async () => (x.direct ? { url: x.url, hls: /\.m3u8/i.test(x.url) } : null), u: x.direct ? undefined : x.url, f: () => (x.direct ? play({ url: x.url }) : playWitLink(x.url)) }));
       if (e.custom) (e.custom.urls || [{ name: 'رابط', url: e.custom.url }]).filter(u => u && u.url).forEach(u => btns.push(lkBtn(`${u.name || 'رابط'} · ${hostOf(u.url)}`, u.url)));
       if (e.a4u) (await a4uServers(e.a4u).catch(() => [])).forEach(x => btns.push(lkBtn(`مدبلج · ${x.label || 'سيرفر'} · ${hostOf(x.url)}`, x.url, true)));
       wq.forEach(g => g.links.forEach(l => btns.push(lkBtn(`WitAnime · ${g.q} · ${hostOf(l)}`, l))));

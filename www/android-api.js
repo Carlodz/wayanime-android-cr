@@ -20,7 +20,7 @@ async function fetch(url, o = {}) {
   if (typeof data === 'string' && !ck) { headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'; ck = 'Content-Type'; }
   if (data && ck && /json/i.test(headers[ck])) { try { data = JSON.parse(data); } catch {} }
   else if (typeof data === 'string' && ck && /x-www-form-urlencoded/i.test(headers[ck])) data = Object.fromEntries(new URLSearchParams(data));
-  const r = await __call('CapacitorHttp', 'request', { url: String(url), method: String(o.method || 'GET').toUpperCase(), headers, data, responseType: 'text', connectTimeout: 20000, readTimeout: 30000 });
+  const r = await __call('CapacitorHttp', 'request', { url: String(url), method: String(o.method || 'GET').toUpperCase(), headers, data, responseType: 'text', connectTimeout: 10000, readTimeout: 20000 });
   const raw = {}; Object.keys(r.headers || {}).forEach((k) => { raw[k.toLowerCase()] = r.headers[k]; });
   const txt = typeof r.data === 'string' ? r.data : JSON.stringify(r.data == null ? '' : r.data);
   const sc = raw['set-cookie'];
@@ -419,17 +419,26 @@ ipcMain.handle('dub:episodes', async (_e, id) => {
   const det = await sdDetail(id); if (!det) return { movie: false, eps: [] };
   if (String(det.type || '').toLowerCase() === 'movie') return { movie: true, eps: [{ num: '1', title: det.title || 'Movie', id: String(det.id || id) }] };
   const raw = [];
-  for (const s of det.seasons || []) {
-    if (!s || s.id == null) continue;
-    const items = []; let total = null;
-    for (let page = 1; page <= 20; page++) {
-      const r = await sdGet('/api/episodes/' + s.id, { page, per_page: 100 });
-      const v = sdVideos(r); if (!v.length) break;
-      items.push(...v); if (r && r.total != null) total = Number(r.total);
-      if ((total != null && items.length >= total) || v.length < 100) break;
+  const seasonItems = async (s) => {
+    const first = await sdGet('/api/episodes/' + s.id, { page: 1, per_page: 100 });
+    const v1 = sdVideos(first); if (!v1.length) return [];
+    const total = first && first.total != null ? Number(first.total) : null;
+    if ((total != null && v1.length >= total) || (total == null && v1.length < 100)) return v1;
+    const items = [...v1];
+    if (total != null && total > 100) {                       // الصفحات الباقية بالتوازي
+      const pages = Math.min(20, Math.ceil(total / 100));
+      const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => sdGet('/api/episodes/' + s.id, { page: i + 2, per_page: 100 }).then(sdVideos).catch(() => [])));
+      rest.forEach((r) => items.push(...r));
+      return items;
     }
-    raw.push(...items);
-  }
+    for (let page = 2; page <= 20; page++) {                   // total مجهول: تسلسلي
+      const v = sdVideos(await sdGet('/api/episodes/' + s.id, { page, per_page: 100 })); if (!v.length) break;
+      items.push(...v); if (v.length < 100) break;
+    }
+    return items;
+  };
+  const per = await Promise.all((det.seasons || []).filter((s) => s && s.id != null).map((s) => seasonItems(s).catch(() => [])));
+  per.forEach((r) => raw.push(...r));
   const f = (x) => { const n = parseFloat(x); return isNaN(n) ? 0 : n; };
   raw.sort((a, b) => f(a.season_number) - f(b.season_number) || f(a.episode_number) - f(b.episode_number) || String(a.id).localeCompare(String(b.id)));
   const seen = new Set(), prep = [];
@@ -644,7 +653,7 @@ function pickHost(label, url) {
 
 async function resolveHost(url, label = '') {
   const kind = pickHost(label, url);
-  const r = await Promise.race([hosts[kind](url).catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 14000))]);
+  const r = await Promise.race([hosts[kind](url).catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 9000))]);
   if (!r || !r.url) return null;
   if (r.headers && Object.keys(r.headers).length) return null;   // كيحتاج Referer: ما يتشغلش داخل التطبيق فـ Android → كيتفتح بالمتصفح
   const q = (/(1080|720|480|360)/.exec(r.url) || [])[1];
@@ -674,6 +683,50 @@ ipcMain.handle('dub:streams', async (_e, { id, ep, movie }) => {
 
 const __NOOP = { 'bg:set': true, 'update:state': null, 'update:install': null, 'win:min': true, 'win:max': false, 'win:close': true, 'custom:list': [], 'custom:open': null, 'media:stop': true };
 window.__waAr = async () => { try { await arInit(); } catch {} return { arBase: AR.base, arToken: AR.token }; };
+
+// ===== كاش + دمج الطلبات المتشابهة (أسرع وأسلس) =====
+const __TTL = { 'ar:list': 300e3, 'ar:search': 300e3, 'ar:episodes': 600e3, 'ar:streams': 240e3, 'dub:list': 300e3, 'dub:search': 300e3, 'dub:detail': 600e3, 'dub:episodes': 600e3, 'dub:latest': 180e3, 'dub:streams': 240e3, 'host:resolve': 240e3, 'anilist:info': 3600e3, 'anilist:desc': 3600e3, 'anilist:schedule': 600e3, 'anilist:recent': 300e3, 'anilist:genre': 600e3, 'anilist:chars': 3600e3, 'web:html': 300e3, 'addon:get': 300e3, 'addon:text': 300e3, 'translate': 86400e3 };
+// كاش دائم (كيبقى بعد إغلاق التطبيق) + SWR: كيعرض النسخة القديمة فوراً (حتى عمرها __STALE) وكيحدّثها فـ الخلفية → فتح سريع بحال التطبيقات الكبار
+const __PERSIST = { 'ar:list': 1, 'ar:episodes': 1, 'dub:list': 1, 'dub:latest': 1, 'dub:episodes': 1, 'dub:detail': 1, 'anilist:info': 1, 'anilist:desc': 1, 'anilist:chars': 1, 'anilist:recent': 1, 'anilist:schedule': 1, 'anilist:genre': 1, 'web:html': 1 };
+const __STALE = { 'ar:list': 86400e3, 'dub:list': 86400e3, 'dub:latest': 86400e3, 'anilist:recent': 86400e3, 'anilist:schedule': 86400e3, 'anilist:genre': 86400e3, 'ar:episodes': 21600e3, 'dub:episodes': 21600e3, 'dub:detail': 86400e3, 'anilist:info': 604800e3, 'anilist:desc': 604800e3, 'anilist:chars': 604800e3, 'web:html': 3600e3 };
+const __mem = new Map(), __fly = new Map();
+const __LS = 'wa_cache_v1:';
+function __empty(v) { return v == null || (Array.isArray(v) && !v.length) || (v && typeof v === 'object' && Array.isArray(v.eps) && !v.eps.length) || v === false; }
+function __lsGet(k) { try { const t = localStorage.getItem(__LS + k); if (!t) return null; const o = JSON.parse(t); return o && o.t ? o : null; } catch { return null; } }
+function __lsSet(k, t, j) {
+  try {
+    if (j.length > 900000) return;
+    localStorage.setItem(__LS + k, JSON.stringify({ t, j }));
+    const keys = []; for (let i = 0; i < localStorage.length; i++) { const x = localStorage.key(i); if (x && x.indexOf(__LS) === 0) keys.push(x); }
+    if (keys.length > 120) { keys.map((x) => [x, (JSON.parse(localStorage.getItem(x) || '{}').t) || 0]).sort((a, b) => a[1] - b[1]).slice(0, keys.length - 120).forEach(([x]) => localStorage.removeItem(x)); }
+  } catch {}
+}
+function __cached(n, a) {
+  const ttl = __TTL[n];
+  if (!ttl) return __H[n]({}, ...a);
+  let k; try { k = n + '|' + JSON.stringify(a); } catch { return __H[n]({}, ...a); }
+  const now = Date.now();
+  let e = __mem.get(k);
+  if (!e && __PERSIST[n]) { const o = __lsGet(k); if (o) { e = o; __mem.set(k, o); } }
+  const fetchFresh = () => {
+    if (__fly.has(k)) return __fly.get(k);
+    const pr = Promise.resolve(__H[n]({}, ...a)).then((v) => {
+      const j = JSON.stringify(v === undefined ? null : v);
+      if (!__empty(v)) { const o = { t: Date.now(), j }; __mem.set(k, o); if (__mem.size > 400) __mem.delete(__mem.keys().next().value); if (__PERSIST[n]) __lsSet(k, o.t, j); }
+      return j;
+    }).finally(() => { __fly.delete(k); });
+    __fly.set(k, pr);
+    return pr;
+  };
+  if (e) {
+    const age = now - e.t;
+    if (age < ttl) return Promise.resolve(JSON.parse(e.j));
+    if (__PERSIST[n] && age < (__STALE[n] || 0)) { fetchFresh().catch(() => {}); return Promise.resolve(JSON.parse(e.j)); }   // قديم لكن مقبول: نعرضوه فوراً ونحدثو فـ الخلفية
+  }
+  return fetchFresh().then((j) => JSON.parse(j)).catch((err) => { if (e && __PERSIST[n]) return JSON.parse(e.j); throw err; });   // ما كاينش نت: نعرضو آخر نسخة محفوظة
+}
+// تسخين مسبق: بمجرد ما التطبيق يبدا نجهزو الاتصال بالمصادر باش أول طلب يكون أسرع
+setTimeout(() => { try { arInit(); } catch {} try { sdAuth(); } catch {} }, 300);
 async function __invoke(n, ...a) {
   if (n === 'open:external') { window.open(String(a[0]), '_system'); return true; }
   if (n === 'logos:list') return LOGOS;
@@ -681,7 +734,7 @@ async function __invoke(n, ...a) {
   if (n === 'notify:sync') return __call('Notify', 'sync', a[0] || {}).then(() => true).catch(() => false);
   if (n === 'notify:perm') return __call('Notify', 'requestPerm', {}).catch(() => ({ granted: false }));
   if (n === 'notify:launch') return __call('Notify', 'getLaunch', {}).catch(() => ({}));
-  if (n in __H) return __H[n]({}, ...a);
+  if (n in __H) return __cached(n, a);
   if (n in __NOOP) return __NOOP[n];
   if (n === 'torrent:start') throw new Error('التورنت غير مدعوم فـ نسخة Android');
   if (n.indexOf('media:') === 0 || n === 'transcode:start') throw new Error('هاد الصيغة ما كتتشغلش فـ Android. جرّب سيرفر آخر.');

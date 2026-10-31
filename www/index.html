@@ -255,7 +255,8 @@ select:focus{border-color:var(--a1);outline:0}
 </header>
 <main id="view"></main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="hls.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';document.head.appendChild(s)"></script>
+<script>try{if('serviceWorker' in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})}catch(e){}</script>
 <script src="android-api.js"></script>
 <script src="renderer.js"></script>
 <script src="drawer.js"></script>
@@ -264,5 +265,6 @@ select:focus{border-color:var(--a1);outline:0}
 <script src="manhwa.js"></script>
 <script src="categories.js"></script>
 <script src="downloads.js"></script>
+<script src="images.js"></script>
 </body>
 </html>
