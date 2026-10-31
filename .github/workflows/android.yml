@@ -23,68 +23,29 @@ jobs:
       - name: Capacitor - add android + sync
         run: |
           npm install
+          cp node_modules/hls.js/dist/hls.min.js www/hls.min.js
           npx cap add android
           npx cap sync android
 
-      - name: Stamp version 2.0 (new)
+      - name: Native fullscreen plugin (landscape + immersive)
         run: |
-          set -e
-          VER=$(node -p "require('./package.json').version")
-          RUN=${{ github.run_number }}
-          # versionCode عالي باش Android يقبل التحديث فوق النسخة القديمة
-          VCODE=$((20000 + RUN))
-          SHA=$(git rev-parse --short HEAD)
-          DATE=$(date -u +%Y-%m-%d_%H%M)
-          TAG="v${VER}-b${RUN}-${SHA}"
-          echo "WA_TAG=${TAG}" >> $GITHUB_ENV
-          echo "WA_VER=${VER}" >> $GITHUB_ENV
-          echo "WA_RUN=${RUN}" >> $GITHUB_ENV
-          echo "WA_VCODE=${VCODE}" >> $GITHUB_ENV
-
-          # حقن فـ الواجهة
-          echo "window.WA_BUILD={v:'${VER}',run:${RUN},code:${VCODE},sha:'${SHA}',date:'${DATE}'};" > www/version.js
-          if [ -f www/index.html ]; then
-            if ! grep -q 'version.js' www/index.html; then
-              sed -i 's#android-api.js#version.js"></script>\n<script src="android-api.js#' www/index.html || true
-            fi
-          fi
-          npx cap sync android
-
-          # تعديل build.gradle بقوة (كل الأشكال)
-          G=android/app/build.gradle
-          echo "=== before ===" && grep -n "versionCode\|versionName\|applicationId" $G || true
-          # versionCode
-          sed -i -E "s/versionCode[[:space:]]+[0-9]+/versionCode ${VCODE}/" $G
-          # versionName (سطر واحد)
-          sed -i -E "s/versionName[[:space:]]+\"[^\"]*\"/versionName \"${VER}\"/" $G
-          # إلا ما بدلش، زيد سطورة
-          if ! grep -q "versionCode ${VCODE}" $G; then
-            sed -i "/defaultConfig {/a\        versionCode ${VCODE}\n        versionName \"${VER}\"" $G
-          fi
-          echo "=== after ===" && grep -n "versionCode\|versionName" $G || true
-          echo "Building ${TAG} (versionCode=${VCODE})"
-
-      - name: Native plugins
-        run: |
-          set -e
           JAVA=android/app/src/main/java/com/wayanime/app
           mkdir -p $JAVA
-          for f in native/*.java; do
-            [ -f "$f" ] && cp "$f" $JAVA/
-          done
-          ls -la $JAVA/
+          cp native/ImmersivePlugin.java native/MainActivity.java native/NotifyPlugin.java native/EpisodeWorker.java $JAVA/
 
-      - name: Notifications extras (optional)
+      - name: Notifications (WorkManager + permission + small icon)
         run: |
           set -e
           mkdir -p android/app/src/main/res/drawable
-          if ls native/ic_*.xml 1>/dev/null 2>&1; then cp native/ic_*.xml android/app/src/main/res/drawable/; fi
-          if [ -f native/EpisodeWorker.java ]; then
-            grep -q "androidx.work:work-runtime" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "androidx.work:work-runtime:2.9.1"' android/app/build.gradle
-            grep -q "org.jsoup:jsoup" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "org.jsoup:jsoup:1.17.2"' android/app/build.gradle
-          fi
+          cp native/ic_*.xml android/app/src/main/res/drawable/
+          # WorkManager للفحص فـ الخلفية حتى والتطبيق مسدود
+          grep -q "androidx.work:work-runtime" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "androidx.work:work-runtime:2.9.1"' android/app/build.gradle
+          # صلاحية الإشعارات (Android 13+)
           M=android/app/src/main/AndroidManifest.xml
-          grep -q POST_NOTIFICATIONS $M || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' $M || true
+          grep -q POST_NOTIFICATIONS $M || sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' $M
+          grep -q "org.jsoup:jsoup" android/app/build.gradle || sed -i '/^dependencies {/a\    implementation "org.jsoup:jsoup:1.17.2"' android/app/build.gradle
+          grep -n "work-runtime\|jsoup" android/app/build.gradle
+          grep -n "POST_NOTIFICATIONS" $M
 
       - name: App icon
         run: |
@@ -93,12 +54,10 @@ jobs:
           sudo apt-get install -y -qq imagemagick
           if command -v magick >/dev/null 2>&1; then IM=magick; else IM=convert; fi
           RES=android/app/src/main/res
-          ICON=""
-          for c in assets/app-icon.png www/assets/app-icon.png assets/icon.png www/assets/icon.png; do
-            if [ -f "$c" ]; then ICON="$c"; break; fi
-          done
-          if [ -z "$ICON" ]; then echo "::warning::no icon, skip"; exit 0; fi
-          ls -la "$ICON"
+          ICON=assets/app-icon.png
+          if [ ! -f "$ICON" ]; then echo "::warning::assets/app-icon.png غير موجود في المستودع، نستعمل assets/icon.png"; ICON=assets/icon.png; fi
+          ls -la assets | head -20
+          # الأيقونة صورة كاملة (مربعة): بلا trim، legacy بملء الصورة، round بقناع دائري، foreground للـ adaptive بحجم 66% فوق لون الخلفية
           for d in mdpi:48:108 hdpi:72:162 xhdpi:96:216 xxhdpi:144:324 xxxhdpi:192:432; do
             IFS=: read n s f <<< "$d"
             fw=$((f*66/100))
@@ -106,7 +65,8 @@ jobs:
             $IM $RES/mipmap-$n/ic_launcher.png \( -size ${s}x${s} xc:black -fill white -draw "circle $((s/2)),$((s/2)) $((s/2)),0" \) -alpha off -compose CopyOpacity -composite $RES/mipmap-$n/ic_launcher_round.png
             $IM "$ICON" -resize ${fw}x${fw} -background none -gravity center -extent ${f}x${f} $RES/mipmap-$n/ic_launcher_foreground.png
           done
-          rm -f $RES/drawable-v24/ic_launcher_foreground.xml $RES/drawable/ic_launcher_background.xml $RES/drawable/ic_launcher_foreground.xml $RES/drawable-v24/ic_launcher_background.xml 2>/dev/null || true
+          # Capacitor كيجي بأيقونة adaptive ديالو (X زرقاء + grid) محددة فـ XML -> نبدلوها بديالنا
+          rm -f $RES/drawable-v24/ic_launcher_foreground.xml $RES/drawable/ic_launcher_background.xml $RES/drawable/ic_launcher_foreground.xml $RES/drawable-v24/ic_launcher_background.xml
           mkdir -p $RES/mipmap-anydpi-v26 $RES/values
           cat > $RES/values/wa_icon_colors.xml <<'XML'
           <?xml version="1.0" encoding="utf-8"?>
@@ -130,17 +90,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Rename APK
-        run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk "WayAnime-${WA_TAG}.apk"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "WayAnime-v2-latest.apk"
-          ls -lh WayAnime-*.apk
-          echo "versionName=2.0.0 versionCode=${WA_VCODE}"
-
       - uses: actions/upload-artifact@v4
         with:
-          name: WayAnime-${{ env.WA_TAG }}
-          path: |
-            WayAnime-${{ env.WA_TAG }}.apk
-            WayAnime-v2-latest.apk
-          retention-days: 30
+          name: WayAnime-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
