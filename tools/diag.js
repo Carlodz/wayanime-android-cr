@@ -26,17 +26,12 @@
     }));
     out.push(await probe('Animeify · عبر التطبيق', async () => {
       if (!H['ar:list']) return { ok: false, msg: 'الـ handler ناقص' };
-      try {
-        const list = await H['ar:list']({}, 0);
-        const n = Array.isArray(list) ? list.length : 0;
-        return { ok: n > 0, msg: n + ' أنمي' };
-      } catch (e) { return { ok: false, msg: String((e && e.message) || e) }; }
+      const l = await H['ar:list']({}, { latest: true, limit: 10 });
+      return { ok: l.length > 0, msg: l.length + ' أنمي' + (l[0] ? ' · ' + l[0].name : '') };
     }));
-    out.push(await probe('WitAnime · مباشر', async () => {
-      const r = await F('https://witanime.art/episode', { headers: { 'User-Agent': UA } });
-      const t = await r.text();
-      const cards = (t.match(/anime-card-container/g) || []).length;
-      const cf = /just a moment|cf-chl|challenge-platform|attention required/i.test(t);
+    out.push(await probe('WitAnime · صفحة الحلقات (مباشر)', async () => {
+      const r = await F('https://witanime.art/episode', { headers: { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8' } });
+      const t = await r.text(), cards = (t.match(/anime-card-container/g) || []).length, cf = /just a moment|cf-chl|challenge-platform|attention required/i.test(t);
       return { ok: r.ok && cards > 0, msg: 'HTTP ' + r.status + ' · ' + cards + ' بطاقة' + (cf ? ' · ⚠ حماية Cloudflare' : '') + ' · ' + head(t) };
     }));
     out.push(await probe('WitAnime · عبر التطبيق', async () => {
