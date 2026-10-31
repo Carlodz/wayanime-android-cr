@@ -31,27 +31,21 @@
   }
 
   function render() {
-    const p = profile();
-    const cur = (id) => { const b = $('#' + id); return b && b.classList.contains('on') ? ' on' : ''; };
-    const letter = esc((p.name || 'W').charAt(0).toUpperCase());
+    const chip = $('#fsec .chip.on'), secOn = chip ? chip.dataset.sec : '';
+    const it = (k, icon, label, on) => '<button data-k="' + k + '" class="' + (on ? 'on' : '') + '">' + icon + '<span>' + label + '</span></button>';
+    const DL = '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>';
     dr.innerHTML =
-      '<div class="drp"' + (p.bg ? ' style="background-image:' + p.bg.replace(/"/g, '&quot;') + '"' : '') + '>' +
-        '<div class="drs"></div>' +
-        '<div class="drpi">' +
-          (p.pic ? '<img src="' + esc(p.pic) + '" alt="" referrerpolicy="no-referrer">' : '<img src="assets/icon.png" alt="">') +
-          '<div><b>' + esc(p.name || 'WayAnime') + '</b>' + (p.pts ? '<span>' + STAR + esc(p.pts) + ' نقطة</span>' : '') + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<nav>' +
-        '<button data-t="nHome" class="' + cur('nHome').trim() + '">' + ICON.home + '<span>الرئيسية</span></button>' +
-        '<button data-t="nFav" class="' + cur('nFav').trim() + '">' + ICON.heart + '<span>المفضلة</span></button>' +
-        '<button data-t="nHist" class="' + cur('nHist').trim() + '">' + ICON.clock + '<span>سجل المشاهدة</span></button>' +
-        '<button data-t="genre">' + ICON.tag + '<span>التصنيفات</span></button>' +
-      '</nav>' +
-      '';
+      '<nav style="padding-top:calc(env(safe-area-inset-top,0px) + 22px)">' +
+        it('sec:EPS', SEC_ICON.EPS, 'آخر الحلقات', secOn === 'EPS') +
+        it('sec:DUBBED', SEC_ICON.DUBBED, 'أنمي مدبلج', secOn === 'DUBBED') +
+        it('genre', ICON.tag, 'التصنيفات', false) +
+        it('dl', DL, 'الحلقات المحملة', false) +
+      '</nav>';
     dr.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => {
-      if (b.dataset.t === 'genre') { close(); setTimeout(goGenre, 150); return; }
-      const t = $('#' + b.dataset.t); close(); if (t) setTimeout(() => t.click(), 120);
+      const k = b.dataset.k; close();
+      if (k === 'genre') setTimeout(goGenre, 150);
+      else if (k === 'dl') setTimeout(() => window.openDownloads && window.openDownloads(), 150);
+      else if (k.indexOf('sec:') === 0) setTimeout(() => goSec(k.slice(4)), 150);
     }));
   }
 

@@ -6,6 +6,7 @@
   const list = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]'); } catch (e) { return []; } };
   const save = (a) => { try { localStorage.setItem(LS, JSON.stringify(a)); } catch (e) {} };
   const fmt = (b) => (b > 1048576 ? (b / 1048576).toFixed(0) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
   const ICON_DL = '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>';
   let busy = false;
 
@@ -22,11 +23,54 @@
     '#dlPage .dle{text-align:center;color:var(--mute,#9a98b5);padding:60px 10px;font-size:14px;line-height:1.9}';
   document.head.appendChild(css);
 
-  function bar(msg, pct) {
-    let el = document.getElementById('dlBar');
-    if (!msg) { if (el) el.remove(); return; }
-    if (!el) { el = document.createElement('div'); el.id = 'dlBar'; document.body.appendChild(el); }
-    el.innerHTML = msg + '<i><b style="width:' + (pct || 0) + '%"></b></i>';
+  async function direct(u) {
+    if (/mediafire\./i.test(hostOf(u))) return window.api && window.api.ar && window.api.ar.direct ? await window.api.ar.direct(u).catch(() => null) : null;
+    if (/\.m3u8|master\.txt/i.test(u)) return null;
+    if (/\.(mp4|webm|mkv)(\?|$)/i.test(u)) return u;
+    const rh = await window.api.resolveHost(u).catch(() => null);
+    return rh && rh.url && !/\.m3u8|master\.txt/i.test(rh.url) ? rh.url : null;
+  }
+
+  function bar(txt, p) {
+    let b = document.getElementById('dlBar');
+    if (txt === null) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'dlBar'; b.innerHTML = '<span></span><i><b></b></i>'; document.body.appendChild(b); }
+    b.querySelector('span').textContent = txt;
+    b.querySelector('b').style.width = (p || 0) + '%';
+  }
+
+  async function run(btns) {
+    const fs = FS();
+    if (!fs) return toast('التحميل كيحتاج نسخة جديدة من التطبيق (3awd build l-APK)');
+    if (busy) return toast('كاين تحميل جاري، تسنّى يكمل');
+    busy = true;
+    const title = (($('.hero h2') || {}).textContent || 'حلقة').trim();
+    const ep = (($('.eps button.on') || {}).textContent || '').trim();
+    try {
+      toast('جارٍ البحث عن رابط تحميل مباشر…');
+      let url = null;
+      for (const b of btns.filter((x) => x.u).slice(0, 15)) {
+        try { url = await withTimeout(direct(b.u), 12000); } catch (e) {}
+        if (url) break;
+      }
+      if (!url) { toast('ما لقينا رابط مباشر (mp4). جرّب حلقة وحدة أخرى أو سيرفر Mediafire/Uqload'); return; }
+      const id = Date.now().toString(36), path = 'downloads/' + id + '.mp4';
+      const label = title + (ep ? ' · ' + ep : '');
+      bar('جارٍ تحميل ' + label + '…', 0);
+      const h = await fs.addListener('progress', (p) => {
+        if (p && p.contentLength > 0) bar('جارٍ تحميل ' + label + ' — ' + Math.round(p.bytes / p.contentLength * 100) + '%', p.bytes / p.contentLength * 100);
+        else if (p && p.bytes) bar('جارٍ تحميل ' + label + ' — ' + fmt(p.bytes), 50);
+      });
+      try {
+        await fs.downloadFile({ url, path, directory: 'DATA', recursive: true, progress: true });
+        const st = await fs.stat({ path, directory: 'DATA' }).catch(() => ({ size: 0 }));
+        const a = list(); a.unshift({ id, title, ep, path, size: st.size || 0, date: Date.now() }); save(a);
+        toast('تحمّلات الحلقة ✔ — كتلقاها فـ «الحلقات المحملة»');
+      } catch (e) {
+        try { await fs.deleteFile({ path, directory: 'DATA' }); } catch (e2) {}
+        toast('فشل التحميل — جرّب مرة أخرى');
+      } finally { try { h.remove(); } catch (e) {} }
+    } finally { bar(null); busy = false; }
   }
 
   async function playItem(it) {
@@ -38,7 +82,6 @@
 
   function render() {
     const a = list();
-    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     view.innerHTML = '<div id="dlPage"><h2 class="cth">الحلقات المحملة</h2>' +
       (a.length ? a.map((it) => '<div class="dli" data-id="' + it.id + '"><button class="pl" data-a="p" title="تشغيل"><svg viewBox="0 0 24 24" style="fill:#fff;stroke:none"><path d="M8 5v14l11-7z"/></svg></button>' +
         '<div class="tx" data-a="p"><b>' + esc(it.title) + '</b><small>' + esc(it.ep || '') + (it.size ? ' · ' + fmt(it.size) : '') + '</small></div>' +
@@ -60,6 +103,6 @@
     document.body.classList.remove('dr-open', 'cb-open');
     view.scrollTop = 0; render();
   };
-  window.waDlEntry = (btns) => ({ t: '@@dl@@ تحميل الحلقة (مشاهدة بلا نت)', f: () => toast('التحميل قريباً'), dl: true });
+  window.waDlEntry = (btns) => ({ t: '@@dl@@ تحميل الحلقة (مشاهدة بلا نت)', f: () => run(btns), dl: true });
   window.waDlIcon = ICON_DL;
 })();

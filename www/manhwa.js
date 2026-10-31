@@ -34,9 +34,9 @@
         const n = (seen[x.id] || []).length;
         const pr = x.ep ? (read('prog', {})[x.id + '#' + x.ep] || null) : null;
         const mm = pr && pr.t > 15 ? Math.floor(pr.t / 60) + ':' + String(pr.t % 60).padStart(2, '0') : '';
-        return '<div class="cw" tabindex="0" data-id="' + esc(x.id) + '" data-type="' + esc(x.type || 'ar') + '" data-ep="' + esc(x.ep || '') + '">' +
-          '<img loading="lazy" src="' + esc(x.poster) + '" alt=""><span class="cwp">' + PLAY + '</span>' +
-          '<div class="cwt"><b>' + esc(x.name) + '</b><small>' + (x.ep ? 'الحلقة ' + esc(x.ep) + (mm ? ' · ' + mm : '') : n ? 'شاهدت ' + n + ' حلقة' : 'ابدأ المشاهدة') + '</small></div></div>';
+        return '<div class="cw" tabindex="0" data-id="' + esc(x.id) + '" data-type="' + esc(x.type || 'ar') + '" data-ep="' + esc(x.ep || '') + '">'
+          + '<img loading="lazy" src="' + esc(x.poster) + '" alt=""><span class="cwp">' + PLAY + '</span>'
+          + '<div class="cwt"><b>' + esc(x.name) + '</b><small>' + (x.ep ? 'الحلقة ' + esc(x.ep) + (mm ? ' · ' + mm : '') : n ? 'شاهدت ' + n + ' حلقة' : 'ابدأ المشاهدة') + '</small></div></div>';
       }).join('') + '</div>';
       const open = (c) => {
         if (!c) return;

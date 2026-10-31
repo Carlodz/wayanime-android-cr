@@ -1027,7 +1027,8 @@ function streamsHtml(btns) {
     if (emb) { toast('ما لقينا سيرفر مباشر — نفتحو أول سيرفر داخل التطبيق'); return embedPlay(emb.u); }
     toast('ما لقينا حتى سيرفر كيخدم داخل المشغّل — جرّب واحد يدوياً');
   } });
-  return '<div class="streams">' + btns.map((x, i) => `<button data-i="${i}">${I.play} ${esc(x.t).replace('@@mic@@', I.mic).replace('@@bolt@@', I.bolt)}</button>`).join('') + '</div><div id="player"></div>';
+  if (window.waDlEntry && !btns.some(b => b.dl)) btns.push(window.waDlEntry(btns));   // زر «تحميل الحلقة» تحت السيرفرات
+  return '<div class="streams">' + btns.map((x, i) => `<button data-i="${i}"${x.dl ? ' class="dlb"' : ''}>${x.dl ? '' : I.play} ${esc(x.t).replace('@@mic@@', I.mic).replace('@@bolt@@', I.bolt).replace('@@dl@@', window.waDlIcon || '')}</button>`).join('') + '</div><div id="player"></div>';
 }
 
 const AR_GENRES = [["أكشن", "Action"], ["مغامرة", "Adventure"], ["كوميدي", "Comedy"], ["دراما", "Drama"], ["خيال", "Fantasy"], ["رعب", "Horror"], ["غموض", "Mystery"], ["نفسي", "Psychological"], ["رومانسي", "Romance"], ["خيال علمي", "Sci-Fi"], ["الحياة اليومية", "Slice-Of-Life"], ["رياضي", "Sports"], ["خارق للطبيعة", "Supernatural"], ["تشويق", "Thriller"], ["ميكا", "Mecha"], ["موسيقى", "Music"], ["إيتشي", "Ecchi"], ["فتاة سحرية", "Mahou-Shoujo"], ["إيسيكاي", "Isekai"], ["شونين", "Shounen"], ["سينين", "Seinen"], ["شوجو", "Shoujo"], ["جوسي", "Josei"], ["مدرسي", "School"], ["حريم", "Harem"], ["عسكري", "Military"], ["تاريخي", "Historical"], ["قوى خارقة", "Super-Power"], ["سحر", "Magic"], ["أساطير", "Mythology"], ["طعام", "Gourmet"], ["فضاء", "Space"], ["بوليسي", "Detective"], ["سفر عبر الزمن", "Time-Travel"], ["مصاصي دماء", "Vampire"], ["سايبربانك", "Cyberpunk"], ["فنون قتالية", "Martial-Arts"], ["ساموراي", "Samurai"], ["بطولة راشدين", "Adult-Cast"]];
