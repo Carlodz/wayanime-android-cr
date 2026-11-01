@@ -1,17 +1,22 @@
-/* كاش الصور (cache-first) باش البوسترات تبان فوراً بلا إعادة تحميل */
-const C = 'wa-img-v1', MAX = 400;
-self.addEventListener('install', (e) => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== C && k.indexOf('wa-img-') === 0).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
+// كاش البوسترات: كل صورة من الإنترنت كتتحمل مرة وحدة وكتتحفظ فـ الجهاز، من بعد كتبان فوراً (حتى بلا إنترنت)
+const CACHE = 'wa-posters-v1', MAX = 900;
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+let puts = 0;
+async function trim(c) { const ks = await c.keys(); if (ks.length > MAX) for (const k of ks.slice(0, ks.length - MAX)) await c.delete(k); }
 self.addEventListener('fetch', (e) => {
   const r = e.request;
-  if (r.method !== 'GET' || r.destination !== 'image' || !/^https?:/i.test(r.url)) return;
-  e.respondWith(caches.open(C).then(async (c) => {
-    const hit = await c.match(r);
+  if (r.method !== 'GET' || r.destination !== 'image') return;
+  const u = new URL(r.url);
+  if (!/^https?:$/.test(u.protocol) || u.origin === self.location.origin) return;
+  e.respondWith((async () => {
+    const c = await caches.open(CACHE);
+    const hit = await c.match(r.url);
     if (hit) return hit;
     try {
-      const res = await fetch(r);
-      if (res && (res.ok || res.type === 'opaque')) { c.put(r, res.clone()).then(() => c.keys()).then((ks) => { if (ks.length > MAX) ks.slice(0, ks.length - MAX).forEach((k) => c.delete(k)); }).catch(() => {}); }
-      return res;
-    } catch (err) { return hit || Response.error(); }
-  }));
+      const res = await fetch(r.url, { mode: 'cors', credentials: 'omit' });
+      if (res.ok) { c.put(r.url, res.clone()).then(() => { if (++puts % 40 === 0) trim(c); }).catch(() => {}); return res; }
+    } catch {}
+    return fetch(r);
+  })());
 });
