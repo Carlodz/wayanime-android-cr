@@ -1,16 +1,19 @@
 {
   "name": "wayanime-android",
-  "version": "1.2.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "WayAnime Android (Capacitor)",
+  "description": "WayAnime — نسخة Android (Capacitor)",
+  "scripts": {
+    "setup": "node setup.js",
+    "sync": "npx cap sync android",
+    "open": "npx cap open android",
+    "apk": "node setup.js --apk"
+  },
   "dependencies": {
-    "@capacitor/android": "^6.2.0",
-    "@capacitor/app": "^6.0.2",
-    "@capacitor/cli": "^6.2.0",
-    "@capacitor/filesystem": "^6.0.0",
-    "hls.js": "1.5.13",
-    "@capacitor/core": "^6.2.0",
-    "@capacitor/screen-orientation": "^6.0.2",
-    "@capacitor/status-bar": "^6.0.1"
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/browser": "^6.0.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
   }
 }
